@@ -25,6 +25,7 @@
     <button type="button" class="tab-button" data-tab="open-positions">Open Positions <span id="open-count-badge" class="tab-count" hidden>0</span></button>
     <button type="button" class="tab-button" data-tab="journal">Journal</button>
     <button type="button" class="tab-button" data-tab="report">Report</button>
+    <button type="button" class="tab-button" data-tab="wallet">Wallet <span id="needs-review-count-badge" class="tab-count" hidden>0</span></button>
   </nav>
 
   <main>
@@ -160,6 +161,93 @@
       <div id="report-list" class="report-list"></div>
       <p id="report-empty" class="empty-state" hidden>Click "Generate Report" to rank your watchlist by criteria met.</p>
     </section>
+
+    <!-- Wallet tab -->
+    <section id="tab-wallet" class="tab-panel" hidden>
+      <div class="wallet-scan-intro">
+        <p class="report-explainer">
+          Read-only: scans a public wallet address for swap history. Never asks for a private key or seed
+          phrase, and can't sign or send anything.
+        </p>
+        <form id="wallet-scan-form" class="wallet-scan-form">
+          <label for="wallet-address-input">Wallet address</label>
+          <input id="wallet-address-input" name="address" type="text" placeholder="0x..." autocomplete="off" />
+          <label for="wallet-chain-input">Chain</label>
+          <input id="wallet-chain-input" name="chain" type="text" value="ethereum" autocomplete="off" />
+          <button type="submit">Scan Wallet</button>
+        </form>
+        <span id="wallet-scan-status" class="status-line" aria-live="polite"></span>
+      </div>
+
+      <h2 class="wallet-section-title">Needs Review</h2>
+      <div class="table-wrap">
+        <table id="needs-review-table">
+          <thead>
+            <tr>
+              <th data-sort-key="token_symbol">Token</th>
+              <th data-sort-key="entry_price">Entry</th>
+              <th data-sort-key="exit_price">Exit</th>
+              <th data-sort-key="size">Size</th>
+              <th data-sort-key="realized_pnl">P&amp;L</th>
+              <th data-sort-key="gas_fee_total">Gas Fee</th>
+              <th data-sort-key="entry_timestamp">Entered</th>
+              <th aria-label="Annotate"></th>
+            </tr>
+          </thead>
+          <tbody id="needs-review-body"></tbody>
+        </table>
+        <p id="needs-review-empty" class="empty-state" hidden>Nothing to review — scan a wallet above.</p>
+      </div>
+
+      <h2 class="wallet-section-title">Logged</h2>
+      <div class="stats-bar" id="wallet-stats-bar">
+        <div class="stat-tile">
+          <span class="stat-tile__label">Total P&amp;L</span>
+          <span class="stat-tile__value" id="wallet-stat-total-pnl">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Total Gas Fees</span>
+          <span class="stat-tile__value" id="wallet-stat-gas">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Win rate</span>
+          <span class="stat-tile__value" id="wallet-stat-win-rate">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Avg win</span>
+          <span class="stat-tile__value" id="wallet-stat-avg-win">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Avg loss</span>
+          <span class="stat-tile__value" id="wallet-stat-avg-loss">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Logged trades</span>
+          <span class="stat-tile__value" id="wallet-stat-logged-count">—</span>
+        </div>
+      </div>
+      <div id="wallet-criteria-breakdown" class="wallet-criteria-breakdown"></div>
+
+      <div class="table-wrap">
+        <table id="wallet-logged-table">
+          <thead>
+            <tr>
+              <th data-sort-key="token_symbol">Token</th>
+              <th data-sort-key="entry_price">Entry</th>
+              <th data-sort-key="exit_price">Exit</th>
+              <th data-sort-key="size">Size</th>
+              <th data-sort-key="realized_pnl">P&amp;L</th>
+              <th data-sort-key="gas_fee_total">Gas Fee</th>
+              <th data-sort-key="criteria_met_count">Criteria Met</th>
+              <th data-sort-key="entry_timestamp">Entered</th>
+              <th>Reasoning</th>
+            </tr>
+          </thead>
+          <tbody id="wallet-logged-body"></tbody>
+        </table>
+        <p id="wallet-logged-empty" class="empty-state" hidden>No logged wallet trades yet.</p>
+      </div>
+    </section>
   </main>
 
   <dialog id="trade-modal">
@@ -205,6 +293,29 @@
       <div class="modal-actions">
         <button type="button" id="trade-modal-cancel">Cancel</button>
         <button type="submit" id="trade-modal-submit">Log trade</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="annotate-modal">
+    <form id="annotate-form">
+      <h2>Annotate <span id="annotate-modal-symbol"></span></h2>
+      <p id="annotate-modal-summary" class="annotate-summary"></p>
+
+      <label>
+        Your reasoning
+        <textarea name="reasoning" id="annotate-reasoning" rows="3" required
+          placeholder="Why this trade, in hindsight or at the time"></textarea>
+      </label>
+
+      <div class="snapshot-picker-label">Link the nearest criteria snapshot (optional)</div>
+      <div id="snapshot-picker" class="snapshot-picker"></div>
+
+      <p id="annotate-modal-error" class="modal-error" hidden></p>
+
+      <div class="modal-actions">
+        <button type="button" id="annotate-modal-cancel">Cancel</button>
+        <button type="submit" id="annotate-modal-submit">Save</button>
       </div>
     </form>
   </dialog>
@@ -299,6 +410,43 @@
       <td class="cell-closed"></td>
       <td class="cell-reasoning"></td>
     </tr>
+  </template>
+
+  <template id="needs-review-row-template">
+    <tr>
+      <td class="cell-token"></td>
+      <td class="cell-entry"></td>
+      <td class="cell-exit"></td>
+      <td class="cell-size"></td>
+      <td class="cell-pnl"></td>
+      <td class="cell-gas"></td>
+      <td class="cell-entered"></td>
+      <td class="cell-annotate"><button type="button" class="annotate-button">Annotate</button></td>
+    </tr>
+  </template>
+
+  <template id="wallet-logged-row-template">
+    <tr>
+      <td class="cell-token"></td>
+      <td class="cell-entry"></td>
+      <td class="cell-exit"></td>
+      <td class="cell-size"></td>
+      <td class="cell-pnl"></td>
+      <td class="cell-gas"></td>
+      <td class="cell-criteria"></td>
+      <td class="cell-entered"></td>
+      <td class="cell-reasoning"></td>
+    </tr>
+  </template>
+
+  <template id="snapshot-option-template">
+    <label class="snapshot-option">
+      <input type="radio" name="linked_snapshot_id" />
+      <span class="snapshot-option__body">
+        <span class="snapshot-option__time"></span>
+        <span class="snapshot-option__facts"></span>
+      </span>
+    </label>
   </template>
 
   <script src="/app.js"></script>

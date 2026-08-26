@@ -172,6 +172,13 @@ function formatCount(value) {
   return String(value);
 }
 
+// Gas fees are denominated in the chain's native currency (ETH), not
+// dollars -- formatMoney's "$" prefix would be wrong here.
+function formatGas(value) {
+  if (value === null || value === undefined) return "n/a";
+  return `${value.toFixed(5)} ETH`;
+}
+
 function pnlSpan(value, { showSign = true } = {}) {
   const span = document.createElement("span");
   if (value === null || value === undefined) {
@@ -865,6 +872,290 @@ class ReportView {
   }
 }
 
+// --- Wallet-scan annotation modal ---------------------------------------
+
+class AnnotateModal {
+  constructor(onAnnotated) {
+    this.onAnnotated = onAnnotated;
+    this.dialog = document.getElementById("annotate-modal");
+    this.form = document.getElementById("annotate-form");
+    this.symbolLabel = document.getElementById("annotate-modal-symbol");
+    this.summaryEl = document.getElementById("annotate-modal-summary");
+    this.errorEl = document.getElementById("annotate-modal-error");
+    this.submitButton = document.getElementById("annotate-modal-submit");
+    this.snapshotPicker = document.getElementById("snapshot-picker");
+    this.snapshotOptionTemplate = document.getElementById("snapshot-option-template");
+    this.trade = null;
+
+    document.getElementById("annotate-modal-cancel").addEventListener("click", () => this.dialog.close());
+    this.form.addEventListener("submit", (event) => this.onSubmit(event));
+  }
+
+  async open(trade) {
+    this.trade = trade;
+    this.symbolLabel.textContent = trade.token_symbol;
+    const exitText = trade.exit_price !== null ? formatPrice(trade.exit_price) : "still open";
+    const pnlText = trade.realized_pnl !== null ? formatMoney(trade.realized_pnl, { showSign: true }) : "n/a";
+    this.summaryEl.textContent =
+      `${formatPrice(trade.entry_price)} → ${exitText} · size ${trade.size.toFixed(4)} · P&L ${pnlText}`;
+    this.form.reset();
+    this.errorEl.hidden = true;
+    this.snapshotPicker.textContent = "Loading nearby snapshots...";
+    this.dialog.showModal();
+
+    const pair = `${trade.token_symbol}USDT`;
+    try {
+      const url = `/api/snapshots/${encodeURIComponent(pair)}/nearby?around=${encodeURIComponent(trade.entry_timestamp)}&count=5`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`server returned ${resp.status}`);
+      const data = await resp.json();
+      this.renderSnapshotOptions(data.snapshots);
+    } catch (err) {
+      this.snapshotPicker.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "snapshot-picker-empty";
+      p.textContent = "Could not load nearby snapshots.";
+      this.snapshotPicker.appendChild(p);
+    }
+  }
+
+  renderSnapshotOptions(snapshots) {
+    this.snapshotPicker.innerHTML = "";
+    if (!snapshots.length) {
+      const p = document.createElement("p");
+      p.className = "snapshot-picker-empty";
+      p.textContent = "No criteria snapshots captured yet for this ticker.";
+      this.snapshotPicker.appendChild(p);
+      return;
+    }
+    for (const snap of snapshots) {
+      const fragment = this.snapshotOptionTemplate.content.cloneNode(true);
+      fragment.querySelector("input").value = snap.id;
+      fragment.querySelector(".snapshot-option__time").textContent = formatDateTime(snap.captured_at);
+      const facts = [];
+      if (snap.daily_ma_stack) facts.push(`MA: ${snap.daily_ma_stack}`);
+      if (snap.daily_rsi !== null && snap.daily_rsi !== undefined) facts.push(`RSI: ${snap.daily_rsi.toFixed(1)}`);
+      if (snap.alignment) facts.push(snap.alignment.replace(/_/g, " "));
+      if (snap.rr_ratio !== null && snap.rr_ratio !== undefined) facts.push(`R:R ${snap.rr_ratio.toFixed(1)}:1`);
+      fragment.querySelector(".snapshot-option__facts").textContent = facts.join(" · ");
+      this.snapshotPicker.appendChild(fragment);
+    }
+  }
+
+  async onSubmit(event) {
+    event.preventDefault();
+    const data = new FormData(this.form);
+    const linkedId = data.get("linked_snapshot_id");
+    const payload = {
+      reasoning: data.get("reasoning"),
+      linked_snapshot_id: linkedId ? Number(linkedId) : null,
+    };
+
+    this.submitButton.disabled = true;
+    try {
+      const resp = await fetch(`/api/wallet/trades/${this.trade.id}/annotate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `server returned ${resp.status}`);
+      }
+      this.dialog.close();
+      await this.onAnnotated();
+    } catch (err) {
+      this.errorEl.textContent = err.message;
+      this.errorEl.hidden = false;
+    } finally {
+      this.submitButton.disabled = false;
+    }
+  }
+}
+
+// --- Wallet-scan journal (Needs Review / Logged) ------------------------
+
+class WalletJournalView {
+  constructor(annotateModal) {
+    this.annotateModal = annotateModal;
+    this.scanForm = document.getElementById("wallet-scan-form");
+    this.scanStatus = document.getElementById("wallet-scan-status");
+
+    this.needsReviewBody = document.getElementById("needs-review-body");
+    this.needsReviewEmpty = document.getElementById("needs-review-empty");
+    this.needsReviewRowTemplate = document.getElementById("needs-review-row-template");
+    this.needsReviewCountBadge = document.getElementById("needs-review-count-badge");
+
+    this.loggedBody = document.getElementById("wallet-logged-body");
+    this.loggedEmpty = document.getElementById("wallet-logged-empty");
+    this.loggedRowTemplate = document.getElementById("wallet-logged-row-template");
+    this.criteriaBreakdown = document.getElementById("wallet-criteria-breakdown");
+
+    this.needsReviewRows = [];
+    this.loggedRows = [];
+    this.needsReviewSorter = new SortController("#needs-review-table", () => this.renderNeedsReview());
+    this.loggedSorter = new SortController("#wallet-logged-table", () => this.renderLogged());
+
+    this.scanForm.addEventListener("submit", (event) => this.onScanSubmit(event));
+  }
+
+  async refresh() {
+    await Promise.all([this.refreshNeedsReview(), this.refreshLogged(), this.refreshStats()]);
+  }
+
+  async refreshNeedsReview() {
+    try {
+      const resp = await fetch("/api/wallet/needs-review");
+      this.needsReviewRows = resp.ok ? await resp.json() : [];
+    } catch (err) {
+      this.needsReviewRows = [];
+    }
+    this.renderNeedsReview();
+    this.needsReviewCountBadge.hidden = this.needsReviewRows.length === 0;
+    this.needsReviewCountBadge.textContent = String(this.needsReviewRows.length);
+  }
+
+  async refreshLogged() {
+    try {
+      const resp = await fetch("/api/wallet/logged");
+      this.loggedRows = resp.ok ? await resp.json() : [];
+    } catch (err) {
+      this.loggedRows = [];
+    }
+    this.renderLogged();
+  }
+
+  async refreshStats() {
+    try {
+      const resp = await fetch("/api/wallet/stats");
+      if (resp.ok) this.renderStats(await resp.json());
+    } catch (err) {
+      // leave the stats bar showing whatever it last showed
+    }
+  }
+
+  renderStats(stats) {
+    const totalPnlEl = document.getElementById("wallet-stat-total-pnl");
+    totalPnlEl.innerHTML = "";
+    totalPnlEl.appendChild(pnlSpan(stats.total_realized_pnl));
+
+    document.getElementById("wallet-stat-gas").textContent = formatGas(stats.total_gas_fees);
+    document.getElementById("wallet-stat-win-rate").textContent = formatPercent(stats.win_rate);
+
+    const avgWinEl = document.getElementById("wallet-stat-avg-win");
+    avgWinEl.innerHTML = "";
+    avgWinEl.appendChild(pnlSpan(stats.avg_win, { showSign: false }));
+
+    const avgLossEl = document.getElementById("wallet-stat-avg-loss");
+    avgLossEl.innerHTML = "";
+    avgLossEl.appendChild(pnlSpan(stats.avg_loss, { showSign: false }));
+
+    document.getElementById("wallet-stat-logged-count").textContent = String(stats.logged_count);
+
+    this.criteriaBreakdown.innerHTML = "";
+    for (const bucket of stats.by_criteria) {
+      const div = document.createElement("div");
+      div.className = "criteria-bucket";
+      const label = document.createElement("span");
+      label.className = "criteria-bucket__label";
+      label.textContent = `${bucket.met_count}/${bucket.total_count} met`;
+      div.appendChild(label);
+      div.appendChild(document.createTextNode(`${bucket.trade_count} trade(s), ${formatPercent(bucket.win_rate)} win rate, `));
+      div.appendChild(pnlSpan(bucket.total_pnl));
+      this.criteriaBreakdown.appendChild(div);
+    }
+  }
+
+  sortValue(row, key) {
+    switch (key) {
+      case "token_symbol":
+        return row.token_symbol;
+      case "entry_price":
+        return row.entry_price;
+      case "exit_price":
+        return row.exit_price ?? -Infinity;
+      case "size":
+        return row.size;
+      case "realized_pnl":
+        return row.realized_pnl ?? -Infinity;
+      case "gas_fee_total":
+        return row.gas_fee_total;
+      case "criteria_met_count":
+        return row.criteria_met_count ?? -Infinity;
+      case "entry_timestamp":
+        return row.entry_timestamp;
+      default:
+        return "";
+    }
+  }
+
+  renderNeedsReview() {
+    this.needsReviewBody.innerHTML = "";
+    const rows = this.needsReviewSorter.apply(this.needsReviewRows, (row, key) => this.sortValue(row, key));
+    this.needsReviewEmpty.hidden = rows.length > 0;
+
+    for (const row of rows) {
+      const fragment = this.needsReviewRowTemplate.content.cloneNode(true);
+      fragment.querySelector(".cell-token").textContent = row.token_symbol;
+      fragment.querySelector(".cell-entry").textContent = formatPrice(row.entry_price);
+      fragment.querySelector(".cell-exit").textContent = row.exit_price !== null ? formatPrice(row.exit_price) : "open";
+      fragment.querySelector(".cell-size").textContent = row.size.toFixed(4);
+      fragment.querySelector(".cell-pnl").appendChild(pnlSpan(row.realized_pnl));
+      fragment.querySelector(".cell-gas").textContent = formatGas(row.gas_fee_total);
+      fragment.querySelector(".cell-entered").textContent = formatDateTime(row.entry_timestamp);
+      fragment.querySelector(".annotate-button").addEventListener("click", () => this.annotateModal.open(row));
+      this.needsReviewBody.appendChild(fragment);
+    }
+  }
+
+  renderLogged() {
+    this.loggedBody.innerHTML = "";
+    const rows = this.loggedSorter.apply(this.loggedRows, (row, key) => this.sortValue(row, key));
+    this.loggedEmpty.hidden = rows.length > 0;
+
+    for (const row of rows) {
+      const fragment = this.loggedRowTemplate.content.cloneNode(true);
+      fragment.querySelector(".cell-token").textContent = row.token_symbol;
+      fragment.querySelector(".cell-entry").textContent = formatPrice(row.entry_price);
+      fragment.querySelector(".cell-exit").textContent = row.exit_price !== null ? formatPrice(row.exit_price) : "open";
+      fragment.querySelector(".cell-size").textContent = row.size.toFixed(4);
+      fragment.querySelector(".cell-pnl").appendChild(pnlSpan(row.realized_pnl));
+      fragment.querySelector(".cell-gas").textContent = formatGas(row.gas_fee_total);
+      fragment.querySelector(".cell-criteria").textContent =
+        row.criteria_met_count !== null ? `${row.criteria_met_count}/${row.criteria_total_count}` : "n/a";
+      fragment.querySelector(".cell-entered").textContent = formatDateTime(row.entry_timestamp);
+      fragment.querySelector(".cell-reasoning").appendChild(reasoningSpan(row.reasoning || ""));
+      this.loggedBody.appendChild(fragment);
+    }
+  }
+
+  async onScanSubmit(event) {
+    event.preventDefault();
+    const data = new FormData(this.scanForm);
+    const address = data.get("address").trim();
+    const chain = data.get("chain").trim() || "ethereum";
+    if (!address) return;
+
+    this.scanStatus.textContent = "Scanning...";
+    try {
+      const resp = await fetch("/api/wallet/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, chain }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `server returned ${resp.status}`);
+      }
+      const result = await resp.json();
+      await this.refresh();
+      this.scanStatus.textContent = `Found ${result.trade_records_found} trade(s), ${result.new_trades_ingested} new.`;
+    } catch (err) {
+      this.scanStatus.textContent = `Scan failed: ${err.message}`;
+    }
+  }
+}
+
 // --- Tabs + bootstrap ---------------------------------------------------
 
 function setupTabs() {
@@ -896,13 +1187,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const watchlist = new WatchlistApp(tradeModal);
   new ReportView(); // on-demand only (per its own "Generate Report" button) — not part of the global refresh
 
+  const annotateModal = new AnnotateModal(async () => {
+    await walletJournal.refresh();
+  });
+  const walletJournal = new WalletJournalView(annotateModal);
+
   document.getElementById("refresh-button").addEventListener("click", () => {
     watchlist.refresh();
     openPositions.refresh();
     journal.refresh();
+    walletJournal.refresh();
   });
 
   watchlist.refresh();
   openPositions.refresh();
   journal.refresh();
+  walletJournal.refresh();
 });

@@ -9,6 +9,7 @@ import requests
 
 BASE_URL = "https://api.binance.com"
 KLINES_ENDPOINT = "/api/v3/klines"
+TICKER_PRICE_ENDPOINT = "/api/v3/ticker/price"
 
 COLUMNS = [
     "open_time",
@@ -90,3 +91,22 @@ def fetch_klines(
 
     df = df.reset_index(drop=True)
     return df
+
+
+def fetch_current_price(symbol: str, *, timeout: float = 10.0) -> float:
+    """Latest traded price for `symbol` from Binance's public ticker
+    endpoint — no auth required, same as fetch_klines."""
+    params = {"symbol": symbol.upper()}
+    try:
+        resp = requests.get(BASE_URL + TICKER_PRICE_ENDPOINT, params=params, timeout=timeout)
+    except requests.RequestException as exc:
+        raise BinanceAPIError(f"request failed for {symbol} price: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise BinanceAPIError(f"Binance returned HTTP {resp.status_code} for {symbol} price: {resp.text}")
+
+    raw = resp.json()
+    if not isinstance(raw, dict) or "price" not in raw:
+        raise BinanceAPIError(f"unexpected response for {symbol} price: {raw}")
+
+    return float(raw["price"])

@@ -1,4 +1,13 @@
-"""Static configuration: tickers and timeframes to screen."""
+"""Static configuration: tickers and timeframes to screen.
+
+Loads a .env file (if present) before anything else here reads an
+environment variable — see SETUP.md for what goes in it. A missing .env
+is not an error; every setting below still has a mock-friendly default.
+"""
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Binance kline interval codes: https://binance-docs.github.io/apidocs/spot/en/#kline-candlestick-data
 TIMEFRAMES = {
@@ -45,3 +54,22 @@ BTC_REFERENCE_SYMBOL = "BTCUSDT"
 
 # Morning report criteria thresholds.
 REPORT_RR_RATIO_MIN = 1.5
+
+# --- Criteria snapshots ---
+
+# How long a snapshot stays before it's pruned.
+SNAPSHOT_RETENTION_DAYS = 30
+
+# A new snapshot for a symbol is only saved if the most recent one is
+# older than this — keeps "capture on every screener refresh" from
+# spamming the DB when the user just clicks Refresh repeatedly.
+SNAPSHOT_CAPTURE_INTERVAL_MINUTES = 60
+
+# --- Wallet transaction scan ---
+
+# Token symbols treated as "base"/quote currencies when pairing swaps
+# into entries and exits (see confluence/wallet/normalize.py). A swap
+# into one of these is an exit; a swap out of one of these is an entry.
+WALLET_BASE_CURRENCIES = {"USDT", "USDC", "DAI", "ETH"}
+
+DEFAULT_WALLET_CHAIN = "ethereum"

@@ -9,9 +9,12 @@ dist/
 
 .env
 .env.*
+!.env.example
 
 tickers.local.json
 paper_trades.local.db
+snapshots.local.db
+wallet_journal.local.db
 
 .vscode/
 .idea/

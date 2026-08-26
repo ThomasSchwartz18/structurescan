@@ -19,7 +19,9 @@ from confluence.api.provider import DATA_SOURCE_LABEL, provider
 from confluence.api.schemas import BtcContextOut, WatchlistResponse, to_ticker_row
 from confluence.config import BTC_REFERENCE_SYMBOL, CANDLE_LIMIT
 from confluence.data.fetch import fetch_ticker_from_provider, fetch_universe_from_provider
-from confluence.screening.analysis import build_ticker_report
+from confluence.screening.analysis import TickerReport, build_ticker_report
+from confluence.snapshots.db import get_connection as get_snapshots_connection
+from confluence.snapshots.store import maybe_save_snapshot
 from confluence.watchlist import load_tickers, save_tickers
 
 router = APIRouter(tags=["watchlist"])
@@ -41,11 +43,30 @@ def build_btc_context() -> Optional[BtcContextOut]:
     return BtcContextOut(symbol=BTC_REFERENCE_SYMBOL, ma_stack=report.timeframes["1D"].ma_stack)
 
 
+def _capture_snapshots(reports: list[TickerReport]) -> None:
+    """Best-effort: a snapshot-storage problem should never break the
+    watchlist response itself, so failures here are swallowed. See
+    confluence/snapshots/store.py — maybe_save_snapshot() already
+    throttles to SNAPSHOT_CAPTURE_INTERVAL_MINUTES on its own."""
+    try:
+        conn = get_snapshots_connection()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        for report in reports:
+            maybe_save_snapshot(conn, report)
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        conn.close()
+
+
 def _build_watchlist_response() -> WatchlistResponse:
     symbols = load_tickers()
     raw = fetch_universe_from_provider(provider, symbols, limit=CANDLE_LIMIT)
 
     rows = []
+    built_reports = []
     for symbol in symbols:  # preserve the user's list order
         data = raw[symbol]
         if isinstance(data, Exception):
@@ -57,7 +78,10 @@ def _build_watchlist_response() -> WatchlistResponse:
             rows.append(to_ticker_row(symbol, error=str(exc)))
             continue
         report = build_ticker_report(symbol, data)
+        built_reports.append(report)
         rows.append(to_ticker_row(symbol, report=report, current_price=current_price))
+
+    _capture_snapshots(built_reports)
 
     return WatchlistResponse(
         data_source=DATA_SOURCE_LABEL,

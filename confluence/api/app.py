@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 
 from confluence.api.routes.paper import router as paper_router
 from confluence.api.routes.report import router as report_router
+from confluence.api.routes.snapshots import router as snapshots_router
+from confluence.api.routes.wallet import router as wallet_router
 from confluence.api.routes.watchlist import router as watchlist_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -30,6 +32,8 @@ def create_app() -> FastAPI:
     app.include_router(watchlist_router, prefix="/api")
     app.include_router(paper_router, prefix="/api")
     app.include_router(report_router, prefix="/api")
+    app.include_router(snapshots_router, prefix="/api")
+    app.include_router(wallet_router, prefix="/api")
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
 

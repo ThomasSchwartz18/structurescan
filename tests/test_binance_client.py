@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from confluence.data.binance_client import BinanceAPIError, fetch_klines
+from confluence.data.binance_client import BinanceAPIError, fetch_current_price, fetch_klines
 
 
 def _kline_row(open_time_ms, o, h, l, c, v, close_time_ms):
@@ -98,3 +98,34 @@ def test_fetch_klines_raises_on_empty_body():
     with patch("confluence.data.binance_client.requests.get", return_value=_make_response([])):
         with pytest.raises(BinanceAPIError):
             fetch_klines("XRPUSDT", "1d")
+
+
+def _price_response(price):
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"symbol": "XRPUSDT", "price": str(price)}
+    return resp
+
+
+def test_fetch_current_price_parses_price():
+    with patch("confluence.data.binance_client.requests.get", return_value=_price_response("2.85000000")):
+        price = fetch_current_price("XRPUSDT")
+    assert price == pytest.approx(2.85)
+
+
+def test_fetch_current_price_raises_on_non_200():
+    resp = MagicMock()
+    resp.status_code = 451
+    resp.text = "restricted location"
+    with patch("confluence.data.binance_client.requests.get", return_value=resp):
+        with pytest.raises(BinanceAPIError):
+            fetch_current_price("XRPUSDT")
+
+
+def test_fetch_current_price_raises_on_unexpected_body():
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"unexpected": "shape"}
+    with patch("confluence.data.binance_client.requests.get", return_value=resp):
+        with pytest.raises(BinanceAPIError):
+            fetch_current_price("XRPUSDT")

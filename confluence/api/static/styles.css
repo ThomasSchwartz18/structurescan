@@ -466,9 +466,10 @@ tbody td {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Trade entry modal --- */
+/* --- Modals (trade entry, wallet-trade annotation) --- */
 
-dialog#trade-modal {
+dialog#trade-modal,
+dialog#annotate-modal {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
@@ -477,20 +478,24 @@ dialog#trade-modal {
   width: min(440px, 90vw);
 }
 
-dialog#trade-modal::backdrop {
+dialog#trade-modal::backdrop,
+dialog#annotate-modal::backdrop {
   background: rgba(0, 0, 0, 0.6);
 }
 
-dialog#trade-modal h2 {
+dialog#trade-modal h2,
+dialog#annotate-modal h2 {
   margin: 0 0 16px;
   font-size: 16px;
 }
 
-#trade-modal-symbol {
+#trade-modal-symbol,
+#annotate-modal-symbol {
   color: var(--accent);
 }
 
-#trade-form label {
+#trade-form label,
+#annotate-form label {
   display: block;
   font-size: 12.5px;
   color: var(--text-dim);
@@ -499,7 +504,10 @@ dialog#trade-modal h2 {
 
 #trade-form input,
 #trade-form select,
-#trade-form textarea {
+#trade-form textarea,
+#annotate-form input,
+#annotate-form select,
+#annotate-form textarea {
   display: block;
   width: 100%;
   margin-top: 5px;
@@ -514,12 +522,16 @@ dialog#trade-modal h2 {
 
 #trade-form input:focus,
 #trade-form select:focus,
-#trade-form textarea:focus {
+#trade-form textarea:focus,
+#annotate-form input:focus,
+#annotate-form select:focus,
+#annotate-form textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-#trade-form textarea {
+#trade-form textarea,
+#annotate-form textarea {
   resize: vertical;
 }
 
@@ -541,7 +553,8 @@ dialog#trade-modal h2 {
   margin-top: 4px;
 }
 
-#trade-modal-submit {
+#trade-modal-submit,
+#annotate-modal-submit {
   background: var(--accent);
   color: #071018;
   border-color: var(--accent);
@@ -636,4 +649,141 @@ descriptive ranking, not a recommendation. */
 
 .report-criterion-label.unmet {
   color: var(--text-dim);
+}
+
+/* --- Wallet scan / journal --- */
+
+.wallet-scan-intro {
+  margin-bottom: 20px;
+}
+
+.wallet-scan-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.wallet-scan-form label {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.wallet-scan-form input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+#wallet-address-input {
+  width: 320px;
+}
+
+#wallet-chain-input {
+  width: 110px;
+}
+
+.wallet-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 24px 0 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wallet-criteria-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.criteria-bucket {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+}
+
+.criteria-bucket__label {
+  color: var(--text-dim);
+  margin-right: 8px;
+}
+
+.annotate-button {
+  font-size: 12px;
+  padding: 5px 10px;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.annotate-button:hover {
+  background: #14202e;
+}
+
+.annotate-summary {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  margin: -4px 0 14px;
+}
+
+.snapshot-picker-label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.snapshot-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.snapshot-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.snapshot-option:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.snapshot-option input {
+  margin-top: 2px;
+}
+
+.snapshot-option__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.snapshot-option__time {
+  font-weight: 600;
+}
+
+.snapshot-option__facts {
+  color: var(--text-dim);
+}
+
+.snapshot-picker-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 8px 0;
 }

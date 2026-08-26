@@ -9,7 +9,9 @@ from confluence.api.app import app
 @pytest.fixture
 def client(tmp_path):
     state_file = tmp_path / "tickers.local.json"
-    with patch("confluence.watchlist.STATE_FILE", state_file):
+    snapshots_file = tmp_path / "snapshots.db"
+    with patch("confluence.watchlist.STATE_FILE", state_file), \
+         patch("confluence.snapshots.db.DB_FILE", snapshots_file):
         yield TestClient(app)
 
 
@@ -34,6 +36,19 @@ def test_get_watchlist_returns_default_tickers_with_screening_state(client):
     assert daily["volume_state"] in {"confirmed", "weak", "insufficient_data"}
     assert daily["rsi_divergence"] in {"none", "bullish", "bearish"}
     assert row["rr_ratio"] is None or row["rr_ratio"] > 0
+
+
+def test_get_watchlist_captures_a_criteria_snapshot_per_ticker(client):
+    from confluence.snapshots.db import get_connection as get_snapshots_connection
+    from confluence.snapshots.store import list_snapshots
+
+    client.get("/api/watchlist")
+    conn = get_snapshots_connection()
+    snapshots = list_snapshots(conn, "XRPUSDT")
+    conn.close()
+
+    assert len(snapshots) == 1
+    assert snapshots[0].payload["symbol"] == "XRPUSDT"
 
 
 def test_watchlist_response_includes_btc_reference_context(client):
