@@ -28,3 +28,20 @@ RSI_OVERSOLD = 30
 
 # Paper trading: starting balance for the virtual account.
 PAPER_STARTING_BALANCE = 10_000.0
+
+# --- Extended screening criteria ---
+
+ATR_PERIOD = 14
+
+# abs(% distance of price from its own 20-MA) beyond which price is
+# flagged "extended" (a mean-reversion note, not a signal to act).
+MA20_EXTENDED_THRESHOLD_PCT = 5.0
+
+# Trailing candles averaged for the volume-vs-average comparison.
+VOLUME_LOOKBACK = 20
+
+# Reference symbol for the always-visible BTC daily trend context row.
+BTC_REFERENCE_SYMBOL = "BTCUSDT"
+
+# Morning report criteria thresholds.
+REPORT_RR_RATIO_MIN = 1.5

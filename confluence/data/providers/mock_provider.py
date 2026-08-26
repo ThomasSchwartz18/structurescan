@@ -47,6 +47,11 @@ BIAS_PARAMS = {
 DEFAULT_SEED_SALT = "confluence-mock"
 
 TICKER_PROFILES: dict[str, dict] = {
+    "BTCUSDT": {
+        "base_price": 65_000.0,
+        "bias": {"1D": "bullish", "4H": "bullish", "1H": "bullish", "15min": "bullish"},
+        "seed_salt": "confluence-mock-v0",
+    },
     "XRPUSDT": {
         "base_price": 2.85,
         "bias": {"1D": "bullish", "4H": "bullish", "1H": "bullish", "15min": "bullish"},

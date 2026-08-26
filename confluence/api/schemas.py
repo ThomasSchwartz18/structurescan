@@ -33,6 +33,17 @@ class TimeframeStateOut(BaseModel):
     nearest_swing_low: Optional[SwingRefOut]
     bias_state: str
 
+    # extended criteria
+    ma20_distance_pct: Optional[float]
+    ma20_state: str
+    atr: Optional[float]
+    extension_ratio: Optional[float]
+    volume_ratio: Optional[float]
+    volume_state: str
+    rsi_divergence: str
+    candles_since_swing_high: Optional[int]
+    candles_since_swing_low: Optional[int]
+
 
 class TickerRowOut(BaseModel):
     symbol: str
@@ -40,12 +51,19 @@ class TickerRowOut(BaseModel):
     error: Optional[str] = None
     current_price: Optional[float] = None
     alignment: Optional[str] = None
+    rr_ratio: Optional[float] = None
     timeframes: Optional[dict[str, TimeframeStateOut]] = None
+
+
+class BtcContextOut(BaseModel):
+    symbol: str
+    ma_stack: str  # "bullish" | "bearish" | "mixed" | "insufficient_data"
 
 
 class WatchlistResponse(BaseModel):
     data_source: str
     generated_at: str
+    btc_context: Optional[BtcContextOut] = None
     tickers: list[TickerRowOut]
 
 
@@ -68,6 +86,15 @@ def _timeframe_state_out(state: TimeframeState) -> TimeframeStateOut:
         nearest_swing_high=_swing_ref_out(state.nearest_swing_high),
         nearest_swing_low=_swing_ref_out(state.nearest_swing_low),
         bias_state=state.bias_state,
+        ma20_distance_pct=state.ma20_distance_pct,
+        ma20_state=state.ma20_state,
+        atr=state.atr,
+        extension_ratio=state.extension_ratio,
+        volume_ratio=state.volume_ratio,
+        volume_state=state.volume_state,
+        rsi_divergence=state.rsi_divergence,
+        candles_since_swing_high=state.candles_since_swing_high,
+        candles_since_swing_low=state.candles_since_swing_low,
     )
 
 
@@ -87,5 +114,6 @@ def to_ticker_row(
         ok=True,
         current_price=current_price,
         alignment=report.alignment,
+        rr_ratio=report.rr_ratio,
         timeframes={label: _timeframe_state_out(state) for label, state in report.timeframes.items()},
     )

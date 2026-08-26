@@ -7,12 +7,17 @@ from fastapi.testclient import TestClient
 
 from confluence.api.app import STATIC_DIR, app
 
-# Unambiguous recommendation/instruction verbs: never legitimate anywhere
-# in the app, including the paper trading journal.
+# Unambiguous recommendation/instruction language: never legitimate
+# anywhere in the app, including the paper trading journal and the
+# morning report (which ranks tickers by criteria met but must never
+# frame that ranking as advice — see confluence/screening/report.py).
 ALWAYS_FORBIDDEN = [
     r"\bbuy\b",
     r"\bsell\b",
     r"\brecommend",
+    r"focus on",
+    r"best setup",
+    r"top pick",
 ]
 
 # "long"/"short"/"entry"/"exit"/"signal" are NOT in the always-forbidden
@@ -29,7 +34,14 @@ SCREENER_LABEL_FORBIDDEN = [
     r"\bsignal\b",
 ] + ALWAYS_FORBIDDEN
 
-SCREENER_LABEL_BLOCKS = ["STRUCTURE_LABELS", "ALIGNMENT_LABELS", "MA_STACK_LABELS"]
+SCREENER_LABEL_BLOCKS = [
+    "STRUCTURE_LABELS",
+    "ALIGNMENT_LABELS",
+    "MA_STACK_LABELS",
+    "MA20_STATE_LABELS",
+    "VOLUME_STATE_LABELS",
+    "RSI_DIVERGENCE_LABELS",
+]
 
 # Lines that legitimately contain the word as part of the app's own
 # disclaimer/rule statement, not as user-facing trading-action language.

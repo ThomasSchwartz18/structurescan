@@ -30,6 +30,17 @@ def test_get_watchlist_returns_default_tickers_with_screening_state(client):
     daily = row["timeframes"]["1D"]
     assert daily["ma_stack"] in {"bullish", "bearish", "mixed", "insufficient_data"}
     assert daily["rsi_zone"] in {"oversold", "neutral", "overbought", "insufficient_data"}
+    assert daily["ma20_state"] in {"extended", "normal", "insufficient_data"}
+    assert daily["volume_state"] in {"confirmed", "weak", "insufficient_data"}
+    assert daily["rsi_divergence"] in {"none", "bullish", "bearish"}
+    assert row["rr_ratio"] is None or row["rr_ratio"] > 0
+
+
+def test_watchlist_response_includes_btc_reference_context(client):
+    resp = client.get("/api/watchlist")
+    body = resp.json()
+    assert body["btc_context"]["symbol"] == "BTCUSDT"
+    assert body["btc_context"]["ma_stack"] in {"bullish", "bearish", "mixed", "insufficient_data"}
 
 
 def test_curated_bullish_ticker_shows_aligned_bullish(client):

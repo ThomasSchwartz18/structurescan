@@ -9,14 +9,16 @@ across every route in this app, including paper trading.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from confluence.api.provider import DATA_SOURCE_LABEL, provider
-from confluence.api.schemas import WatchlistResponse, to_ticker_row
-from confluence.config import CANDLE_LIMIT
-from confluence.data.fetch import fetch_universe_from_provider
+from confluence.api.schemas import BtcContextOut, WatchlistResponse, to_ticker_row
+from confluence.config import BTC_REFERENCE_SYMBOL, CANDLE_LIMIT
+from confluence.data.fetch import fetch_ticker_from_provider, fetch_universe_from_provider
 from confluence.screening.analysis import build_ticker_report
 from confluence.watchlist import load_tickers, save_tickers
 
@@ -25,6 +27,18 @@ router = APIRouter(tags=["watchlist"])
 
 class AddTickerRequest(BaseModel):
     symbol: str
+
+
+def build_btc_context() -> Optional[BtcContextOut]:
+    """Always-visible market context, independent of the user's watchlist.
+    Best-effort: if BTC itself can't be fetched, the reference row is just
+    omitted rather than failing the whole watchlist response."""
+    try:
+        data = fetch_ticker_from_provider(provider, BTC_REFERENCE_SYMBOL, timeframe_labels=["1D"], limit=CANDLE_LIMIT)
+        report = build_ticker_report(BTC_REFERENCE_SYMBOL, data)
+    except Exception:  # noqa: BLE001 - reference context is best-effort
+        return None
+    return BtcContextOut(symbol=BTC_REFERENCE_SYMBOL, ma_stack=report.timeframes["1D"].ma_stack)
 
 
 def _build_watchlist_response() -> WatchlistResponse:
@@ -48,6 +62,7 @@ def _build_watchlist_response() -> WatchlistResponse:
     return WatchlistResponse(
         data_source=DATA_SOURCE_LABEL,
         generated_at=pd.Timestamp.now(tz="UTC").isoformat(),
+        btc_context=build_btc_context(),
         tickers=rows,
     )
 

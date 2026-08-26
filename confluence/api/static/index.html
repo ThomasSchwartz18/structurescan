@@ -12,13 +12,19 @@
       <h1>Confluence</h1>
       <span class="app-header__subtitle">Multi-timeframe technical state — descriptive only, not a recommendation.</span>
     </div>
-    <div id="mock-banner" class="mock-banner" hidden>MOCK DATA — not live market data</div>
+    <div class="app-header__right">
+      <div id="btc-context" class="btc-context" hidden>
+        BTC daily trend: <span id="btc-context-value" class="badge"></span>
+      </div>
+      <div id="mock-banner" class="mock-banner" hidden>MOCK DATA — not live market data</div>
+    </div>
   </header>
 
   <nav class="tab-nav">
     <button type="button" class="tab-button active" data-tab="watchlist">Watchlist</button>
     <button type="button" class="tab-button" data-tab="open-positions">Open Positions <span id="open-count-badge" class="tab-count" hidden>0</span></button>
     <button type="button" class="tab-button" data-tab="journal">Journal</button>
+    <button type="button" class="tab-button" data-tab="report">Report</button>
   </nav>
 
   <main>
@@ -47,6 +53,13 @@
               <th data-sort-key="alignment">Alignment</th>
               <th data-sort-key="support">Nearest Support</th>
               <th data-sort-key="resistance">Nearest Resistance</th>
+              <th data-sort-key="rr_ratio">R:R</th>
+              <th data-sort-key="ma20_dist">20MA Dist</th>
+              <th data-sort-key="extension_ratio">Extension (ATR)</th>
+              <th data-sort-key="volume_ratio">Volume</th>
+              <th data-sort-key="rsi_divergence">RSI Div</th>
+              <th data-sort-key="since_high">Since High</th>
+              <th data-sort-key="since_low">Since Low</th>
               <th aria-label="Remove"></th>
             </tr>
           </thead>
@@ -133,6 +146,20 @@
         <p id="journal-empty" class="empty-state" hidden>No closed trades yet.</p>
       </div>
     </section>
+
+    <!-- Report tab -->
+    <section id="tab-report" class="tab-panel" hidden>
+      <div class="report-intro">
+        <p class="report-explainer">
+          Ranks your watchlist by how many of six fixed criteria each ticker currently meets — a transparent
+          count of matching facts, not a verdict. Nothing here says which ticker to act on.
+        </p>
+        <button type="button" id="generate-report-button" class="refresh-button">Generate Report</button>
+        <span id="report-status" class="status-line" aria-live="polite"></span>
+      </div>
+      <div id="report-list" class="report-list"></div>
+      <p id="report-empty" class="empty-state" hidden>Click "Generate Report" to rank your watchlist by criteria met.</p>
+    </section>
   </main>
 
   <dialog id="trade-modal">
@@ -193,13 +220,21 @@
       <td class="cell-alignment"></td>
       <td class="cell-support"></td>
       <td class="cell-resistance"></td>
+      <td class="cell-rr-ratio"></td>
+      <td class="cell-ma20-dist"></td>
+      <td class="cell-extension-ratio"></td>
+      <td class="cell-volume-ratio"></td>
+      <td class="cell-rsi-divergence"></td>
+      <td class="cell-since-high"></td>
+      <td class="cell-since-low"></td>
       <td class="cell-remove"><button type="button" class="remove-button" aria-label="Remove ticker">&times;</button></td>
     </tr>
     <tr class="detail-row" hidden>
-      <td colspan="10">
+      <td colspan="17">
         <div class="detail-actions">
           <button type="button" class="log-trade-button">Log paper trade</button>
         </div>
+        <div class="detail-chart"></div>
         <div class="detail-content"></div>
       </td>
     </tr>
@@ -215,7 +250,24 @@
         <dt>Price vs MAs</dt><dd class="detail-price-vs-ma"></dd>
         <dt>Nearest swing high</dt><dd class="detail-swing-high"></dd>
         <dt>Nearest swing low</dt><dd class="detail-swing-low"></dd>
+        <dt>20-MA distance</dt><dd class="detail-ma20-dist"></dd>
+        <dt>ATR(14)</dt><dd class="detail-atr"></dd>
+        <dt>Extension (ATR)</dt><dd class="detail-extension-ratio"></dd>
+        <dt>Volume vs avg</dt><dd class="detail-volume"></dd>
+        <dt>RSI divergence</dt><dd class="detail-rsi-divergence"></dd>
+        <dt>Since swing high</dt><dd class="detail-since-high"></dd>
+        <dt>Since swing low</dt><dd class="detail-since-low"></dd>
       </dl>
+    </div>
+  </template>
+
+  <template id="report-card-template">
+    <div class="report-card">
+      <div class="report-card__header">
+        <span class="report-card__symbol"></span>
+        <span class="report-card__count"></span>
+      </div>
+      <ul class="report-card__criteria"></ul>
     </div>
   </template>
 

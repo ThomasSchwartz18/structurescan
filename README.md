@@ -28,6 +28,26 @@ Confluence pulls OHLCV candles and reports:
 | **Structure** | Higher-highs/higher-lows vs. lower-highs/lower-lows, based on objectively detected swing points — not hand-drawn lines |
 | **Reference levels** | Nearest confirmed swing high/low as a factual support/resistance reference |
 | **Timeframe alignment** | Whether all four timeframes describe the same technical state, or conflict with each other |
+| **20-MA distance** | % distance of price from its own 20-MA, flagged "extended" beyond a configurable threshold (default 5%) |
+| **ATR(14) / extension ratio** | Average True Range per timeframe, and distance-from-recent-swing-low normalized by ATR, so volatility is comparable across tickers with different typical ranges |
+| **Volume vs. average** | Latest candle's volume vs. its trailing 20-candle average, flagged "confirmed" or "weak" |
+| **RSI divergence** | Bullish (price LL, RSI HL) or bearish (price HH, RSI LH) divergence over the two most recent confirmed swing points, or "none" |
+| **Risk/reward ratio** | Distance to nearest resistance ÷ distance to nearest support, from daily swing levels |
+| **Swing freshness** | Candles elapsed since the most recent confirmed swing high/low |
+| **BTC daily trend reference** | Always-visible header badge showing BTC's own daily MA-stack trend, independent of your watchlist |
+
+Every ticker's detail view also embeds a live **TradingView chart** (the
+free "Advanced Chart" widget, no API key) defaulting to 1H with the full
+interactive TradingView toolbar — purely a display addition, it doesn't
+feed into any of Confluence's own calculations.
+
+A **"Generate Report"** view ranks your whole watchlist by how many of
+six fixed criteria each ticker currently meets (timeframe alignment, RSI
+neutral, not extended from the 20-MA, volume confirming, no RSI
+divergence against the daily trend, R:R above 1.5:1) — reported as
+"X meets 5/6 of your defined criteria: [...]", ranked highest-first.
+Every card is styled identically regardless of rank; nothing here says
+which ticker to act on.
 
 On top of the screener, Confluence has a **paper trading journal**: log a
 virtual trade (direction, entry, size, stop-loss/take-profit, and your
@@ -39,10 +59,13 @@ the screener shows you, with a record you can review later.
 
 ## Status
 
-**Currently running on mock data, clearly labeled as such in the UI.**
-The web app (FastAPI + browser UI), the screening pipeline, the paper
-trading journal, and the data layer's provider abstraction are all built
-and covered by 100 unit tests. `MockDataProvider` generates realistic,
+**Currently running on mock data, clearly labeled as such in the UI**
+(the embedded TradingView charts are the one exception — those show real
+live market data, since that's a separate, independent widget). The web
+app (FastAPI + browser UI), the screening pipeline, the extended
+criteria, the morning report, the paper trading journal, and the data
+layer's provider abstraction are all built and covered by 149 unit
+tests. `MockDataProvider` generates realistic,
 deterministic synthetic OHLCV so every visual state (aligned bullish,
 aligned bearish, conflict) can be exercised without live market access. A
 real Binance-backed data source exists too (used by the legacy
@@ -73,12 +96,14 @@ serves the watchlist UI in your browser:
 python -m confluence.api
 ```
 
-Then open **http://127.0.0.1:8000**. Three tabs:
+Then open **http://127.0.0.1:8000**. Four tabs:
 
 - **Watchlist** — add/remove tickers, click a row to expand its
-  per-timeframe breakdown, click a column header to sort, use Refresh to
-  re-pull data. Your watchlist is saved to `tickers.local.json`
-  (gitignored, per-user) and reloaded next time.
+  per-timeframe breakdown (including a live TradingView chart) and
+  criteria columns, click a column header to sort, use Refresh to re-pull
+  data. A BTC daily-trend badge is always visible in the header,
+  independent of what's on your watchlist. Your watchlist is saved to
+  `tickers.local.json` (gitignored, per-user) and reloaded next time.
 - **Open Positions** — from a ticker's expanded detail view, "Log paper
   trade" opens a form (direction, entry price pre-filled from the current
   price, size, optional stop-loss/take-profit, and a required reasoning
@@ -88,6 +113,10 @@ Then open **http://127.0.0.1:8000**. Three tabs:
 - **Journal** — closed trades with entry/exit/P&L/reasoning, sortable by
   date or outcome, plus a stats summary (equity, total P&L, win rate,
   average win/loss).
+- **Report** — click "Generate Report" to rank your watchlist by criteria
+  met (see [What it does](#what-it-does)). On-demand only; nothing
+  auto-generates it, so it's exactly where a future scheduler would hook
+  in without changing this view.
 
 Trade records live in `paper_trades.local.db` (SQLite, gitignored,
 per-user).
@@ -128,11 +157,12 @@ confluence/
 │       ├── base.py             # DataProvider interface (+ DataProviderError)
 │       └── mock_provider.py    # MockDataProvider: deterministic synthetic OHLCV
 ├── indicators/
-│   ├── ta.py               # SMA, Wilder-smoothed RSI(14)
+│   ├── ta.py               # SMA, Wilder-smoothed RSI(14), ATR(14)
 │   ├── swings.py            # objective swing high/low detection
-│   └── enrich.py            # attaches indicator columns to raw OHLCV
+│   └── enrich.py            # attaches indicator + ATR + volume-average columns to raw OHLCV
 ├── screening/
-│   └── analysis.py          # MA stack / RSI zone / structure / alignment logic
+│   ├── analysis.py          # MA stack / RSI zone / structure / alignment + extended criteria
+│   └── report.py             # morning report: criteria matching + ranking, UI-agnostic on purpose
 ├── paper/                # paper trading: virtual account + trade journal
 │   ├── db.py                # SQLite schema + connection (paper_trades.local.db)
 │   └── store.py               # open/close trades, journal queries, P&L/stats math
@@ -141,9 +171,10 @@ confluence/
 │   ├── provider.py           # the one shared DataProvider instance (screener + paper trading)
 │   ├── schemas.py            # dataclass -> JSON response models (screener)
 │   ├── routes/
-│   │   ├── watchlist.py        # GET/POST/DELETE /api/watchlist, GET /api/meta
+│   │   ├── watchlist.py        # GET/POST/DELETE /api/watchlist, GET /api/meta, BTC context
+│   │   ├── report.py            # GET /api/report
 │   │   └── paper.py             # /api/paper/trades (open/close/list), /api/paper/stats
-│   └── static/                # HTML/CSS/vanilla JS frontend, no build step
+│   └── static/                # HTML/CSS/vanilla JS frontend, no build step (incl. TradingView embed)
 ├── output/
 │   └── dashboard.py         # terminal table rendering (rich) — legacy
 ├── ui/
@@ -200,7 +231,20 @@ Design principles:
 - **Facts only, enforced by tests.** The screening layer never produces
   buy/sell/long/short language. Dedicated tests scan both the rendered
   terminal dashboard and the web frontend's static assets for that
-  vocabulary and fail if it appears.
+  vocabulary — including report-specific anti-patterns the user
+  explicitly called out ("focus on X", "best setup today", "top pick") —
+  and fail if it appears.
+- **The morning report is UI-agnostic by design.** `generate_report()` in
+  `confluence/screening/report.py` takes already-built `TickerReport`
+  objects and returns plain data — no FastAPI/HTTP dependency at all —
+  so a future scheduler can call it directly on a timer with no changes
+  to this module, only something new choosing to call it.
+- **Divergence/alignment criteria don't get to invent a direction.**
+  Where a report criterion is inherently directional ("no bearish
+  divergence if considering a long..."), it's evaluated against the
+  ticker's own observed daily MA-stack direction rather than asking the
+  user which way they're leaning — the report never introduces a
+  direction of its own.
 - **Objective swing points.** Swing highs/lows are detected as local
   extremes over a configurable window (a "fractal"), not drawn manually —
   so reference levels are reproducible and free of hindsight bias.
@@ -228,19 +272,25 @@ Design principles:
 python -m pytest
 ```
 
-All 100 tests run against synthetic or mocked data — no network access
+All 149 tests run against synthetic or mocked data — no network access
 required. Coverage includes:
 
-- RSI validated against a hand-computed example (to catch smoothing/seeding
-  bugs, not just "does it run")
+- RSI and ATR validated against hand-computed examples (to catch
+  smoothing/seeding bugs, not just "does it run")
 - Edge cases: all-gains, all-losses, and too-short input series
 - Swing detection validated against hand-verified fractal positions
 - Screening logic: MA stack, RSI zone, structure, and alignment
-  classification
+  classification, plus the extended criteria (20-MA distance, volume
+  ratio, RSI divergence direction, R:R ratio, swing freshness) each
+  checked against hand-picked scenarios, not just smoke-tested
+- Morning report: every criterion checked independently (including the
+  R:R "strictly above" boundary and the divergence-direction proxy for
+  bullish/bearish/mixed daily stacks), ranking order, and alphabetical
+  tie-breaking
 - `MockDataProvider`: schema/shape, OHLC geometry, deterministic seeding,
   trend direction, and correct exclusion of the still-forming candle
-- The FastAPI watchlist API (via `TestClient`): fetching, adding,
-  removing tickers, and error isolation
+- The FastAPI watchlist/report APIs (via `TestClient`): fetching, adding,
+  removing tickers, BTC reference context, and error isolation
 - Paper trading: open/close validation, P&L sign correctness for both
   long and short, win/loss/breakeven classification, stats math (win
   rate, avg win/loss) including the zero-closed-trades edge case, and the
@@ -259,11 +309,16 @@ required. Coverage includes:
 
 The web UI itself was also verified by actually running the server and
 loading the page in a real (Playwright-driven) browser — clicking
-through sorting, row expansion, add/remove, each alignment state, and the
+through sorting, row expansion, add/remove, each alignment state, the
 full paper trading flow (log a trade, watch it appear with live P&L,
-close it, confirm it lands in the journal with updated stats) — not just
-by the automated test suite above. That live pass caught two real bugs
-a test suite alone wouldn't have: a CSS `white-space: nowrap` inheritance
+close it, confirm it lands in the journal with updated stats), the new
+criteria columns and detail fields against known-good values computed
+independently in a Python shell first, the morning report tab, and the
+embedded TradingView chart (which really did load live XRP price data,
+confirming TradingView's CDN is reachable even in an environment where
+every crypto exchange API is blocked — see Known issues) — not just by
+the automated test suite above. That live pass caught two real bugs a
+test suite alone wouldn't have: a CSS `white-space: nowrap` inheritance
 issue that made most of the expanded detail view invisible, and a
 watchlist-persistence bug where saving an empty ticker list silently
 reverted to defaults.
@@ -281,6 +336,14 @@ entirely on mock data and is unaffected. Once Binance is reachable, run
 RSI(14)/SMA(20/50/100/200) values against TradingView for a few closed
 daily candles to confirm.
 
+The embedded TradingView charts pull real live data from TradingView's
+own CDN (`s3.tradingview.com` / `tradingview-widget.com`), which is a
+different host than the exchange APIs above and was confirmed reachable
+in this same blocked-network environment — so the chart works today even
+though live Binance data doesn't yet. If a chart doesn't load in your
+environment, that's a network/firewall question for those specific
+TradingView hosts, unrelated to the rest of the app.
+
 ## Roadmap
 
 - [ ] `RealDataProvider` wrapping `binance_client.py`, wired into the web
@@ -291,6 +354,12 @@ daily candles to confirm.
       not a step toward it)
 - [ ] Editable starting balance / reset-account control in the UI
       (currently set via `PAPER_STARTING_BALANCE` in `config.py`)
+- [ ] Morning report criteria thresholds (20-MA extension %, R:R minimum)
+      editable in the UI — currently `config.py` constants, applied
+      identically for everyone rather than truly "your defined criteria"
+- [ ] Scheduled/automatic morning report generation (the module is
+      already built to support this — see the "UI-agnostic by design"
+      note above — just needs something to call it on a timer)
 - [ ] Config file (JSON/YAML) for default timeframes/indicator settings
 - [ ] Packaged/distributable build
 

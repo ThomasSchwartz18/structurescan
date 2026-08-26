@@ -23,7 +23,56 @@ const MA_STACK_LABELS = {
 
 const DIRECTION_LABELS = { long: "Long", short: "Short" };
 
+const MA20_STATE_LABELS = { extended: "Extended", normal: "Normal", insufficient_data: "n/a" };
+const VOLUME_STATE_LABELS = { confirmed: "Confirmed", weak: "Weak", insufficient_data: "n/a" };
+const RSI_DIVERGENCE_LABELS = { none: "None", bullish: "Bullish", bearish: "Bearish" };
+
 const TIMEFRAME_ORDER = ["1D", "4H", "1H", "15min"];
+
+// Default interval shown when a ticker's chart first loads (TradingView
+// minute-based codes: "60" = 1H). The embedded widget's own toolbar lets
+// the viewer change timeframe/indicators interactively from there — this
+// only sets the starting point, not a real-time link to the rest of the app.
+const TRADINGVIEW_DEFAULT_INTERVAL = "60";
+
+// Renders TradingView's free "Advanced Chart" widget (no API key) for one
+// symbol into `container`. This is a pure display addition: it doesn't
+// feed data back into any of Confluence's own indicator calculations.
+// Dynamically-inserted <script src> tags only execute when created via
+// the DOM API (as here) — assigning via innerHTML would leave them inert.
+function renderTradingViewChart(container, symbol) {
+  container.innerHTML = "";
+
+  const widgetContainer = document.createElement("div");
+  widgetContainer.className = "tradingview-widget-container";
+  widgetContainer.style.height = "100%";
+  widgetContainer.style.width = "100%";
+
+  const widgetInner = document.createElement("div");
+  widgetInner.className = "tradingview-widget-container__widget";
+  widgetInner.style.height = "100%";
+  widgetInner.style.width = "100%";
+  widgetContainer.appendChild(widgetInner);
+
+  const script = document.createElement("script");
+  script.type = "text/javascript";
+  script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.async = true;
+  script.textContent = JSON.stringify({
+    autosize: true,
+    symbol: `BINANCE:${symbol}`,
+    interval: TRADINGVIEW_DEFAULT_INTERVAL,
+    timezone: "Etc/UTC",
+    theme: "dark",
+    style: "1",
+    locale: "en",
+    allow_symbol_change: false,
+    support_host: "https://www.tradingview.com",
+  });
+  widgetContainer.appendChild(script);
+
+  container.appendChild(widgetContainer);
+}
 
 function stateClass(kind, value) {
   if (kind === "ma_stack") {
@@ -46,6 +95,19 @@ function stateClass(kind, value) {
   }
   if (kind === "direction") {
     return value === "long" ? "state-bullish" : "state-bearish";
+  }
+  if (kind === "ma20_state") {
+    return value === "extended" ? "state-mixed" : "state-flat";
+  }
+  if (kind === "volume_state") {
+    if (value === "confirmed") return "state-bullish";
+    if (value === "weak") return "state-mixed";
+    return "state-flat";
+  }
+  if (kind === "rsi_divergence") {
+    if (value === "bullish") return "state-bullish";
+    if (value === "bearish") return "state-bearish";
+    return "state-flat";
   }
   return "state-flat";
 }
@@ -86,6 +148,30 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+// Distance-from-MA is already a percentage value (not a 0-1 fraction),
+// unlike formatPercent's win-rate usage above, so this signs it directly
+// rather than multiplying by 100.
+function formatSignedPercent(value) {
+  if (value === null || value === undefined) return "n/a";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+function formatRatio(value, { suffix = "x", decimals = 2 } = {}) {
+  if (value === null || value === undefined) return "n/a";
+  return `${value.toFixed(decimals)}${suffix}`;
+}
+
+function formatRR(value) {
+  if (value === null || value === undefined) return "n/a";
+  return `${value.toFixed(1)}:1`;
+}
+
+function formatCount(value) {
+  if (value === null || value === undefined) return "n/a";
+  return String(value);
+}
+
 function pnlSpan(value, { showSign = true } = {}) {
   const span = document.createElement("span");
   if (value === null || value === undefined) {
@@ -122,6 +208,28 @@ function rsiCell(state) {
   zone.className = "rsi-zone" + (extended ? " extended" : "");
   zone.textContent = `(${state.rsi_zone.replace("_", " ")})`;
   wrap.appendChild(zone);
+  return wrap;
+}
+
+function ma20DistCell(state) {
+  const wrap = document.createElement("span");
+  if (state.ma20_distance_pct === null || state.ma20_distance_pct === undefined) {
+    wrap.textContent = "n/a";
+    return wrap;
+  }
+  wrap.appendChild(document.createTextNode(formatSignedPercent(state.ma20_distance_pct) + " "));
+  wrap.appendChild(badge("ma20_state", state.ma20_state, MA20_STATE_LABELS[state.ma20_state] ?? state.ma20_state));
+  return wrap;
+}
+
+function volumeCell(state) {
+  const wrap = document.createElement("span");
+  if (state.volume_ratio === null || state.volume_ratio === undefined) {
+    wrap.textContent = "n/a";
+    return wrap;
+  }
+  wrap.appendChild(document.createTextNode(formatRatio(state.volume_ratio) + " "));
+  wrap.appendChild(badge("volume_state", state.volume_state, VOLUME_STATE_LABELS[state.volume_state] ?? state.volume_state));
   return wrap;
 }
 
@@ -190,6 +298,8 @@ class WatchlistApp {
     this.emptyState = document.getElementById("empty-state");
     this.statusLine = document.getElementById("status-line");
     this.mockBanner = document.getElementById("mock-banner");
+    this.btcContext = document.getElementById("btc-context");
+    this.btcContextValue = document.getElementById("btc-context-value");
     this.refreshButton = document.getElementById("refresh-button");
     this.addForm = document.getElementById("add-ticker-form");
     this.tickerInput = document.getElementById("ticker-input");
@@ -219,6 +329,7 @@ class WatchlistApp {
       const data = await resp.json();
       this.rows = data.tickers;
       this.mockBanner.hidden = data.data_source !== "mock";
+      this.renderBtcContext(data.btc_context);
       this.render();
       const failed = this.rows.filter((r) => !r.ok).length;
       const timestamp = new Date().toLocaleTimeString();
@@ -228,6 +339,16 @@ class WatchlistApp {
     } catch (err) {
       this.setStatus(`Refresh failed: ${err.message}`);
     }
+  }
+
+  renderBtcContext(btcContext) {
+    if (!btcContext) {
+      this.btcContext.hidden = true;
+      return;
+    }
+    this.btcContext.hidden = false;
+    this.btcContextValue.className = `badge ${stateClass("ma_stack", btcContext.ma_stack)}`;
+    this.btcContextValue.textContent = MA_STACK_LABELS[btcContext.ma_stack] ?? btcContext.ma_stack;
   }
 
   async onAddSubmit(event) {
@@ -296,6 +417,20 @@ class WatchlistApp {
         return row.ok && d1.nearest_swing_low ? d1.nearest_swing_low.price : -Infinity;
       case "resistance":
         return row.ok && d1.nearest_swing_high ? d1.nearest_swing_high.price : -Infinity;
+      case "rr_ratio":
+        return row.ok && row.rr_ratio !== null ? row.rr_ratio : -Infinity;
+      case "ma20_dist":
+        return row.ok && d1.ma20_distance_pct !== null ? Math.abs(d1.ma20_distance_pct) : -Infinity;
+      case "extension_ratio":
+        return row.ok && d1.extension_ratio !== null ? d1.extension_ratio : -Infinity;
+      case "volume_ratio":
+        return row.ok && d1.volume_ratio !== null ? d1.volume_ratio : -Infinity;
+      case "rsi_divergence":
+        return row.ok ? d1.rsi_divergence : "";
+      case "since_high":
+        return row.ok && d1.candles_since_swing_high !== null ? d1.candles_since_swing_high : Infinity;
+      case "since_low":
+        return row.ok && d1.candles_since_swing_low !== null ? d1.candles_since_swing_low : Infinity;
       default:
         return "";
     }
@@ -324,11 +459,12 @@ class WatchlistApp {
         errEl.className = "error-text";
         errEl.textContent = `error: ${row.error}`;
         symbolCell.appendChild(errEl);
-        ["daily-trend", "daily-rsi", "h4-structure", "h1-structure", "alignment", "support", "resistance"].forEach(
-          (cls) => {
-            trMain.querySelector(`.cell-${cls}`).textContent = "-";
-          }
-        );
+        [
+          "daily-trend", "daily-rsi", "h4-structure", "h1-structure", "alignment", "support", "resistance",
+          "rr-ratio", "ma20-dist", "extension-ratio", "volume-ratio", "rsi-divergence", "since-high", "since-low",
+        ].forEach((cls) => {
+          trMain.querySelector(`.cell-${cls}`).textContent = "-";
+        });
         this.tbody.appendChild(trMain);
         this.tbody.appendChild(trDetail);
         continue;
@@ -352,6 +488,15 @@ class WatchlistApp {
         .appendChild(badge("alignment", row.alignment, ALIGNMENT_LABELS[row.alignment] ?? row.alignment));
       trMain.querySelector(".cell-support").textContent = formatSwing(d1.nearest_swing_low);
       trMain.querySelector(".cell-resistance").textContent = formatSwing(d1.nearest_swing_high);
+      trMain.querySelector(".cell-rr-ratio").textContent = formatRR(row.rr_ratio);
+      trMain.querySelector(".cell-ma20-dist").appendChild(ma20DistCell(d1));
+      trMain.querySelector(".cell-extension-ratio").textContent = formatRatio(d1.extension_ratio);
+      trMain.querySelector(".cell-volume-ratio").appendChild(volumeCell(d1));
+      trMain
+        .querySelector(".cell-rsi-divergence")
+        .appendChild(badge("rsi_divergence", d1.rsi_divergence, RSI_DIVERGENCE_LABELS[d1.rsi_divergence] ?? d1.rsi_divergence));
+      trMain.querySelector(".cell-since-high").textContent = formatCount(d1.candles_since_swing_high);
+      trMain.querySelector(".cell-since-low").textContent = formatCount(d1.candles_since_swing_low);
 
       const expanded = this.expandedSymbol === row.symbol;
       trDetail.hidden = !expanded;
@@ -371,6 +516,8 @@ class WatchlistApp {
   }
 
   populateDetail(trDetail, row) {
+    renderTradingViewChart(trDetail.querySelector(".detail-chart"), row.symbol);
+
     const logButton = trDetail.querySelector(".log-trade-button");
     logButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -392,6 +539,15 @@ class WatchlistApp {
       fragment.querySelector(".detail-price-vs-ma").textContent = priceVsMaText(state);
       fragment.querySelector(".detail-swing-high").textContent = formatSwing(state.nearest_swing_high);
       fragment.querySelector(".detail-swing-low").textContent = formatSwing(state.nearest_swing_low);
+      fragment.querySelector(".detail-ma20-dist").appendChild(ma20DistCell(state));
+      fragment.querySelector(".detail-atr").textContent = state.atr === null ? "n/a" : formatPrice(state.atr);
+      fragment.querySelector(".detail-extension-ratio").textContent = formatRatio(state.extension_ratio);
+      fragment.querySelector(".detail-volume").appendChild(volumeCell(state));
+      fragment
+        .querySelector(".detail-rsi-divergence")
+        .appendChild(badge("rsi_divergence", state.rsi_divergence, RSI_DIVERGENCE_LABELS[state.rsi_divergence] ?? state.rsi_divergence));
+      fragment.querySelector(".detail-since-high").textContent = formatCount(state.candles_since_swing_high);
+      fragment.querySelector(".detail-since-low").textContent = formatCount(state.candles_since_swing_low);
       container.appendChild(fragment);
     }
   }
@@ -647,6 +803,68 @@ class TradeModal {
   }
 }
 
+// --- Morning report -------------------------------------------------
+
+class ReportView {
+  constructor() {
+    this.button = document.getElementById("generate-report-button");
+    this.statusLine = document.getElementById("report-status");
+    this.list = document.getElementById("report-list");
+    this.emptyState = document.getElementById("report-empty");
+    this.cardTemplate = document.getElementById("report-card-template");
+
+    this.button.addEventListener("click", () => this.generate());
+  }
+
+  async generate() {
+    this.button.disabled = true;
+    this.statusLine.textContent = "Generating...";
+    try {
+      const resp = await fetch("/api/report");
+      if (!resp.ok) throw new Error(`server returned ${resp.status}`);
+      const data = await resp.json();
+      this.render(data);
+      const timestamp = new Date().toLocaleTimeString();
+      const failedNote = data.failed_symbols.length
+        ? ` — ${data.failed_symbols.length} ticker(s) could not be scored.`
+        : "";
+      this.statusLine.textContent = `Generated ${timestamp}.${failedNote}`;
+    } catch (err) {
+      this.statusLine.textContent = `Report failed: ${err.message}`;
+    } finally {
+      this.button.disabled = false;
+    }
+  }
+
+  render(data) {
+    this.list.innerHTML = "";
+    this.emptyState.hidden = data.scores.length > 0;
+
+    for (const score of data.scores) {
+      const fragment = this.cardTemplate.content.cloneNode(true);
+      fragment.querySelector(".report-card__symbol").textContent = score.symbol;
+      fragment.querySelector(".report-card__count").textContent =
+        `meets ${score.met_count}/${score.total_count} of your defined criteria`;
+
+      const list = fragment.querySelector(".report-card__criteria");
+      for (const criterion of score.criteria) {
+        const li = document.createElement("li");
+        const icon = document.createElement("span");
+        icon.className = `report-criterion-icon ${criterion.met ? "met" : "unmet"}`;
+        icon.textContent = criterion.met ? "✓" : "–";
+        const label = document.createElement("span");
+        label.className = criterion.met ? "" : "report-criterion-label unmet";
+        label.textContent = criterion.label;
+        li.appendChild(icon);
+        li.appendChild(label);
+        list.appendChild(li);
+      }
+
+      this.list.appendChild(fragment);
+    }
+  }
+}
+
 // --- Tabs + bootstrap ---------------------------------------------------
 
 function setupTabs() {
@@ -676,6 +894,7 @@ document.addEventListener("DOMContentLoaded", () => {
     await openPositions.refresh();
   });
   const watchlist = new WatchlistApp(tradeModal);
+  new ReportView(); // on-demand only (per its own "Generate Report" button) — not part of the global refresh
 
   document.getElementById("refresh-button").addEventListener("click", () => {
     watchlist.refresh();
