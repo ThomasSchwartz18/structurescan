@@ -52,7 +52,7 @@ def _wait_until(app, predicate, timeout=2.0):
 @pytest.fixture
 def isolated_state(tmp_path):
     state_file = tmp_path / "tickers.local.json"
-    with patch("confluence.ui.state.STATE_FILE", state_file):
+    with patch("confluence.watchlist.STATE_FILE", state_file):
         yield state_file
 
 

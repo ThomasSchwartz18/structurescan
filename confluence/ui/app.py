@@ -20,7 +20,7 @@ from tkinter import messagebox, ttk
 from confluence.config import CANDLE_LIMIT, TIMEFRAMES
 from confluence.main import build_reports
 from confluence.output.dashboard import COLUMNS, format_alignment, format_rsi, format_structure, format_swing
-from confluence.ui.state import load_tickers, save_tickers
+from confluence.watchlist import load_tickers, save_tickers
 
 DEFAULT_REFRESH_SECONDS = 60
 MIN_REFRESH_SECONDS = 10

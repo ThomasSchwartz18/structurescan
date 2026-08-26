@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confluence — Watchlist</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__title">
+      <h1>Confluence</h1>
+      <span class="app-header__subtitle">Multi-timeframe technical state — descriptive only, not a recommendation.</span>
+    </div>
+    <div id="mock-banner" class="mock-banner" hidden>MOCK DATA — not live market data</div>
+  </header>
+
+  <main>
+    <section class="controls">
+      <form id="add-ticker-form" class="add-ticker-form">
+        <label for="ticker-input">Add ticker</label>
+        <input id="ticker-input" name="symbol" type="text" placeholder="e.g. BTCUSDT" autocomplete="off" />
+        <button type="submit">Add</button>
+      </form>
+      <button id="refresh-button" type="button" class="refresh-button">Refresh</button>
+      <span id="status-line" class="status-line" aria-live="polite"></span>
+    </section>
+
+    <section class="table-wrap">
+      <table id="watchlist-table">
+        <thead>
+          <tr>
+            <th data-sort-key="symbol">Ticker</th>
+            <th data-sort-key="current_price">Current Price</th>
+            <th data-sort-key="daily_trend">Daily Trend</th>
+            <th data-sort-key="daily_rsi">Daily RSI</th>
+            <th data-sort-key="h4_structure">4H Structure</th>
+            <th data-sort-key="h1_structure">1H Structure</th>
+            <th data-sort-key="alignment">Alignment</th>
+            <th data-sort-key="support">Nearest Support</th>
+            <th data-sort-key="resistance">Nearest Resistance</th>
+            <th aria-label="Remove"></th>
+          </tr>
+        </thead>
+        <tbody id="watchlist-body">
+        </tbody>
+      </table>
+      <p id="empty-state" class="empty-state" hidden>No tickers on your watchlist yet — add one above.</p>
+    </section>
+  </main>
+
+  <template id="row-template">
+    <tr class="ticker-row" tabindex="0">
+      <td class="cell-symbol"></td>
+      <td class="cell-price"></td>
+      <td class="cell-daily-trend"></td>
+      <td class="cell-daily-rsi"></td>
+      <td class="cell-h4-structure"></td>
+      <td class="cell-h1-structure"></td>
+      <td class="cell-alignment"></td>
+      <td class="cell-support"></td>
+      <td class="cell-resistance"></td>
+      <td class="cell-remove"><button type="button" class="remove-button" aria-label="Remove ticker">&times;</button></td>
+    </tr>
+    <tr class="detail-row" hidden>
+      <td colspan="10"><div class="detail-content"></div></td>
+    </tr>
+  </template>
+
+  <template id="detail-timeframe-template">
+    <div class="detail-timeframe">
+      <h3 class="detail-timeframe__title"></h3>
+      <dl>
+        <dt>MA stack</dt><dd class="detail-ma-stack"></dd>
+        <dt>RSI</dt><dd class="detail-rsi"></dd>
+        <dt>Structure</dt><dd class="detail-structure"></dd>
+        <dt>Price vs MAs</dt><dd class="detail-price-vs-ma"></dd>
+        <dt>Nearest swing high</dt><dd class="detail-swing-high"></dd>
+        <dt>Nearest swing low</dt><dd class="detail-swing-low"></dd>
+      </dl>
+    </div>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
