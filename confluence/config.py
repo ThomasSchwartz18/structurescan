@@ -1,0 +1,27 @@
+"""Static configuration: tickers and timeframes to screen."""
+
+# Binance kline interval codes: https://binance-docs.github.io/apidocs/spot/en/#kline-candlestick-data
+TIMEFRAMES = {
+    "1D": "1d",
+    "4H": "4h",
+    "1H": "1h",
+    "15min": "15m",
+}
+
+DEFAULT_TICKERS = [
+    "XRPUSDT",
+]
+
+# Candle history pulled per request. Must comfortably exceed the longest
+# indicator lookback (SMA200) plus room for swing-point detection.
+CANDLE_LIMIT = 300
+
+RSI_PERIOD = 14
+SMA_PERIODS = (20, 50, 100, 200)
+
+# Candles required on each side of a bar for it to confirm as a swing
+# high/low (see confluence/indicators/swings.py).
+SWING_ORDER = 3
+
+RSI_OVERBOUGHT = 70
+RSI_OVERSOLD = 30
