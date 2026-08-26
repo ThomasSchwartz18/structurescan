@@ -28,12 +28,10 @@ Data comes from Binance's public market-data REST API (no API key required).
 
 ## Status
 
-The core pipeline — data fetch → indicators → screening logic → terminal
-dashboard — is built and covered by 38 unit tests. Live verification
-against a real market and TradingView is still pending; see
-[Known issues](#known-issues).
-
-A UI beyond the terminal table is in progress (see [Roadmap](#roadmap)).
+The core pipeline — data fetch → indicators → screening logic → dashboard
+(terminal table and a Tkinter desktop UI) — is built and covered by 41
+unit tests. Live verification against a real market and TradingView is
+still pending; see [Known issues](#known-issues).
 
 ## Installation
 
@@ -52,7 +50,17 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the dashboard, refreshing every 60 seconds by default:
+**Desktop UI** — add/remove tickers, set the refresh interval, toggle
+auto-refresh, all from a window:
+
+```bash
+python -m confluence.ui.app
+```
+
+Your ticker list is saved to `tickers.local.json` (gitignored, per-user)
+and reloaded next time you open the app.
+
+**Terminal dashboard** — refreshes in place every 60 seconds by default:
 
 ```bash
 python -m confluence.main
@@ -90,7 +98,10 @@ confluence/
 │   └── analysis.py          # MA stack / RSI zone / structure / alignment logic
 ├── output/
 │   └── dashboard.py         # terminal table rendering (rich)
-├── main.py               # entrypoint: fetch → screen → render, on a loop
+├── ui/
+│   ├── app.py               # Tkinter desktop UI
+│   └── state.py              # persists the user's ticker list between sessions
+├── main.py               # terminal entrypoint: fetch → screen → render, on a loop
 └── verify.py             # manual single-symbol spot-check script
 ```
 
@@ -115,7 +126,7 @@ Design principles:
 python -m pytest
 ```
 
-All 38 tests run against synthetic or mocked data — no network access
+All 41 tests run against synthetic or mocked data — no network access
 required. Coverage includes:
 
 - RSI validated against a hand-computed example (to catch smoothing/seeding
@@ -129,6 +140,8 @@ required. Coverage includes:
 - End-to-end wiring from a mocked fetch through to the rendered table
 - A guardrail test asserting the dashboard never emits trading-action
   language
+- The Tkinter UI's widget wiring, threaded fetch/queue handling, ticker
+  add/remove, and input validation
 
 ## Known issues
 
@@ -144,10 +157,9 @@ daily candles to confirm.
 ## Roadmap
 
 - [ ] Live verification against TradingView once network access allows it
-- [ ] Desktop UI beyond the terminal table
-- [ ] Config file (JSON/YAML) for the ticker list, instead of editing
-      `config.py` directly
-- [ ] Packaged/distributable build
+- [ ] Sortable/color-coded UI table columns
+- [ ] Config file (JSON/YAML) for default timeframes/indicator settings
+- [ ] Packaged/distributable build (e.g. PyInstaller)
 
 ## Disclaimer
 
