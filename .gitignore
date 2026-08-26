@@ -11,6 +11,7 @@ dist/
 .env.*
 
 tickers.local.json
+paper_trades.local.db
 
 .vscode/
 .idea/

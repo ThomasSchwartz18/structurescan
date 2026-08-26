@@ -25,3 +25,6 @@ SWING_ORDER = 3
 
 RSI_OVERBOUGHT = 70
 RSI_OVERSOLD = 30
+
+# Paper trading: starting balance for the virtual account.
+PAPER_STARTING_BALANCE = 10_000.0

@@ -3,11 +3,8 @@ tickers. Every response reports descriptive technical state only — see
 confluence/screening/analysis.py for the "facts, not verdicts" rule this
 whole app is built around.
 
-`_provider` is the single place that selects which DataProvider backs
-this API. It's MockDataProvider today; swapping in a future
-RealDataProvider (implementing the same interface) is the only change
-this pivot requires — nothing else in this file, or in the screening/
-indicator layers, needs to know.
+See confluence/api/provider.py for the shared DataProvider instance used
+across every route in this app, including paper trading.
 """
 
 from __future__ import annotations
@@ -16,18 +13,14 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from confluence.api.provider import DATA_SOURCE_LABEL, provider
 from confluence.api.schemas import WatchlistResponse, to_ticker_row
 from confluence.config import CANDLE_LIMIT
 from confluence.data.fetch import fetch_universe_from_provider
-from confluence.data.providers.base import DataProvider
-from confluence.data.providers.mock_provider import MockDataProvider
 from confluence.screening.analysis import build_ticker_report
 from confluence.watchlist import load_tickers, save_tickers
 
 router = APIRouter(tags=["watchlist"])
-
-_provider: DataProvider = MockDataProvider()
-DATA_SOURCE_LABEL = "mock"
 
 
 class AddTickerRequest(BaseModel):
@@ -36,7 +29,7 @@ class AddTickerRequest(BaseModel):
 
 def _build_watchlist_response() -> WatchlistResponse:
     symbols = load_tickers()
-    raw = fetch_universe_from_provider(_provider, symbols, limit=CANDLE_LIMIT)
+    raw = fetch_universe_from_provider(provider, symbols, limit=CANDLE_LIMIT)
 
     rows = []
     for symbol in symbols:  # preserve the user's list order
@@ -45,7 +38,7 @@ def _build_watchlist_response() -> WatchlistResponse:
             rows.append(to_ticker_row(symbol, error=str(data)))
             continue
         try:
-            current_price = _provider.get_current_price(symbol)
+            current_price = provider.get_current_price(symbol)
         except Exception as exc:  # noqa: BLE001 - isolate one bad ticker from the rest
             rows.append(to_ticker_row(symbol, error=str(exc)))
             continue

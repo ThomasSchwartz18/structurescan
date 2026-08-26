@@ -15,6 +15,12 @@
     <div id="mock-banner" class="mock-banner" hidden>MOCK DATA — not live market data</div>
   </header>
 
+  <nav class="tab-nav">
+    <button type="button" class="tab-button active" data-tab="watchlist">Watchlist</button>
+    <button type="button" class="tab-button" data-tab="open-positions">Open Positions <span id="open-count-badge" class="tab-count" hidden>0</span></button>
+    <button type="button" class="tab-button" data-tab="journal">Journal</button>
+  </nav>
+
   <main>
     <section class="controls">
       <form id="add-ticker-form" class="add-ticker-form">
@@ -26,28 +32,155 @@
       <span id="status-line" class="status-line" aria-live="polite"></span>
     </section>
 
-    <section class="table-wrap">
-      <table id="watchlist-table">
-        <thead>
-          <tr>
-            <th data-sort-key="symbol">Ticker</th>
-            <th data-sort-key="current_price">Current Price</th>
-            <th data-sort-key="daily_trend">Daily Trend</th>
-            <th data-sort-key="daily_rsi">Daily RSI</th>
-            <th data-sort-key="h4_structure">4H Structure</th>
-            <th data-sort-key="h1_structure">1H Structure</th>
-            <th data-sort-key="alignment">Alignment</th>
-            <th data-sort-key="support">Nearest Support</th>
-            <th data-sort-key="resistance">Nearest Resistance</th>
-            <th aria-label="Remove"></th>
-          </tr>
-        </thead>
-        <tbody id="watchlist-body">
-        </tbody>
-      </table>
-      <p id="empty-state" class="empty-state" hidden>No tickers on your watchlist yet — add one above.</p>
+    <!-- Watchlist tab -->
+    <section id="tab-watchlist" class="tab-panel">
+      <div class="table-wrap">
+        <table id="watchlist-table">
+          <thead>
+            <tr>
+              <th data-sort-key="symbol">Ticker</th>
+              <th data-sort-key="current_price">Current Price</th>
+              <th data-sort-key="daily_trend">Daily Trend</th>
+              <th data-sort-key="daily_rsi">Daily RSI</th>
+              <th data-sort-key="h4_structure">4H Structure</th>
+              <th data-sort-key="h1_structure">1H Structure</th>
+              <th data-sort-key="alignment">Alignment</th>
+              <th data-sort-key="support">Nearest Support</th>
+              <th data-sort-key="resistance">Nearest Resistance</th>
+              <th aria-label="Remove"></th>
+            </tr>
+          </thead>
+          <tbody id="watchlist-body">
+          </tbody>
+        </table>
+        <p id="empty-state" class="empty-state" hidden>No tickers on your watchlist yet — add one above.</p>
+      </div>
+    </section>
+
+    <!-- Open positions tab -->
+    <section id="tab-open-positions" class="tab-panel" hidden>
+      <div class="table-wrap">
+        <table id="open-positions-table">
+          <thead>
+            <tr>
+              <th data-sort-key="symbol">Ticker</th>
+              <th data-sort-key="direction">Direction</th>
+              <th data-sort-key="entry_price">Entry</th>
+              <th data-sort-key="size">Size</th>
+              <th data-sort-key="current_price">Current Price</th>
+              <th data-sort-key="unrealized_pnl">Unrealized P&amp;L</th>
+              <th data-sort-key="stop_loss">Stop-loss</th>
+              <th data-sort-key="take_profit">Take-profit</th>
+              <th data-sort-key="opened_at">Opened</th>
+              <th>Reasoning</th>
+              <th aria-label="Close"></th>
+            </tr>
+          </thead>
+          <tbody id="open-positions-body">
+          </tbody>
+        </table>
+        <p id="open-positions-empty" class="empty-state" hidden>No open paper trades. Expand a ticker on the Watchlist tab to log one.</p>
+      </div>
+    </section>
+
+    <!-- Journal tab -->
+    <section id="tab-journal" class="tab-panel" hidden>
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-tile">
+          <span class="stat-tile__label">Equity</span>
+          <span class="stat-tile__value" id="stat-equity">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Total P&amp;L</span>
+          <span class="stat-tile__value" id="stat-total-pnl">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Win rate</span>
+          <span class="stat-tile__value" id="stat-win-rate">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Avg win</span>
+          <span class="stat-tile__value" id="stat-avg-win">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Avg loss</span>
+          <span class="stat-tile__value" id="stat-avg-loss">—</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Closed trades</span>
+          <span class="stat-tile__value" id="stat-closed-count">—</span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="journal-table">
+          <thead>
+            <tr>
+              <th data-sort-key="symbol">Ticker</th>
+              <th data-sort-key="direction">Direction</th>
+              <th data-sort-key="entry_price">Entry</th>
+              <th data-sort-key="exit_price">Exit</th>
+              <th data-sort-key="size">Size</th>
+              <th data-sort-key="realized_pnl">P&amp;L</th>
+              <th data-sort-key="opened_at">Opened</th>
+              <th data-sort-key="closed_at">Closed</th>
+              <th>Reasoning</th>
+            </tr>
+          </thead>
+          <tbody id="journal-body">
+          </tbody>
+        </table>
+        <p id="journal-empty" class="empty-state" hidden>No closed trades yet.</p>
+      </div>
     </section>
   </main>
+
+  <dialog id="trade-modal">
+    <form id="trade-form">
+      <h2>Log paper trade — <span id="trade-modal-symbol"></span></h2>
+
+      <label>
+        Direction
+        <select name="direction" id="trade-direction" required>
+          <option value="long">Long</option>
+          <option value="short">Short</option>
+        </select>
+      </label>
+
+      <label>
+        Entry price
+        <input type="number" name="entry_price" id="trade-entry-price" step="any" min="0" required />
+      </label>
+
+      <label>
+        Position size (units)
+        <input type="number" name="size" id="trade-size" step="any" min="0" required />
+      </label>
+
+      <label>
+        Stop-loss <span class="optional-label">(optional)</span>
+        <input type="number" name="stop_loss" id="trade-stop-loss" step="any" min="0" />
+      </label>
+
+      <label>
+        Take-profit <span class="optional-label">(optional)</span>
+        <input type="number" name="take_profit" id="trade-take-profit" step="any" min="0" />
+      </label>
+
+      <label>
+        Why are you taking this trade?
+        <textarea name="reasoning" id="trade-reasoning" rows="3" required
+          placeholder="e.g. daily RSI extended but 4H/1H/15min aligned bullish, entering on pullback to 20MA"></textarea>
+      </label>
+
+      <p id="trade-modal-error" class="modal-error" hidden></p>
+
+      <div class="modal-actions">
+        <button type="button" id="trade-modal-cancel">Cancel</button>
+        <button type="submit" id="trade-modal-submit">Log trade</button>
+      </div>
+    </form>
+  </dialog>
 
   <template id="row-template">
     <tr class="ticker-row" tabindex="0">
@@ -63,7 +196,12 @@
       <td class="cell-remove"><button type="button" class="remove-button" aria-label="Remove ticker">&times;</button></td>
     </tr>
     <tr class="detail-row" hidden>
-      <td colspan="10"><div class="detail-content"></div></td>
+      <td colspan="10">
+        <div class="detail-actions">
+          <button type="button" class="log-trade-button">Log paper trade</button>
+        </div>
+        <div class="detail-content"></div>
+      </td>
     </tr>
   </template>
 
@@ -79,6 +217,36 @@
         <dt>Nearest swing low</dt><dd class="detail-swing-low"></dd>
       </dl>
     </div>
+  </template>
+
+  <template id="open-position-row-template">
+    <tr>
+      <td class="cell-symbol"></td>
+      <td class="cell-direction"></td>
+      <td class="cell-entry"></td>
+      <td class="cell-size"></td>
+      <td class="cell-current-price"></td>
+      <td class="cell-unrealized-pnl"></td>
+      <td class="cell-stop-loss"></td>
+      <td class="cell-take-profit"></td>
+      <td class="cell-opened"></td>
+      <td class="cell-reasoning"></td>
+      <td class="cell-close"><button type="button" class="close-position-button">Close</button></td>
+    </tr>
+  </template>
+
+  <template id="journal-row-template">
+    <tr>
+      <td class="cell-symbol"></td>
+      <td class="cell-direction"></td>
+      <td class="cell-entry"></td>
+      <td class="cell-exit"></td>
+      <td class="cell-size"></td>
+      <td class="cell-pnl"></td>
+      <td class="cell-opened"></td>
+      <td class="cell-closed"></td>
+      <td class="cell-reasoning"></td>
+    </tr>
   </template>
 
   <script src="/app.js"></script>

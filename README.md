@@ -29,16 +29,25 @@ Confluence pulls OHLCV candles and reports:
 | **Reference levels** | Nearest confirmed swing high/low as a factual support/resistance reference |
 | **Timeframe alignment** | Whether all four timeframes describe the same technical state, or conflict with each other |
 
+On top of the screener, Confluence has a **paper trading journal**: log a
+virtual trade (direction, entry, size, stop-loss/take-profit, and your
+reasoning) against a $10,000 virtual account, track open positions'
+unrealized P&L against live provider prices, close them manually, and
+review win rate / average win vs. loss over your closed trade history. No
+real funds or exchange connection — it's practice for executing on what
+the screener shows you, with a record you can review later.
+
 ## Status
 
 **Currently running on mock data, clearly labeled as such in the UI.**
-The web app (FastAPI + browser UI), the screening pipeline, and the data
-layer's provider abstraction are all built and covered by 72 unit tests.
-`MockDataProvider` generates realistic, deterministic synthetic OHLCV so
-every visual state (aligned bullish, aligned bearish, conflict) can be
-exercised without live market access. A real Binance-backed data source
-exists too (used by the legacy terminal/Tkinter tools — see below) but
-isn't yet wired into the web app; see [Roadmap](#roadmap).
+The web app (FastAPI + browser UI), the screening pipeline, the paper
+trading journal, and the data layer's provider abstraction are all built
+and covered by 100 unit tests. `MockDataProvider` generates realistic,
+deterministic synthetic OHLCV so every visual state (aligned bullish,
+aligned bearish, conflict) can be exercised without live market access. A
+real Binance-backed data source exists too (used by the legacy
+terminal/Tkinter tools — see below) but isn't yet wired into the web app;
+see [Roadmap](#roadmap).
 
 ## Installation
 
@@ -64,10 +73,24 @@ serves the watchlist UI in your browser:
 python -m confluence.api
 ```
 
-Then open **http://127.0.0.1:8000**. Add/remove tickers, click a row to
-expand its per-timeframe breakdown, click a column header to sort, and
-use Refresh to re-pull data. Your watchlist is saved to
-`tickers.local.json` (gitignored, per-user) and reloaded next time.
+Then open **http://127.0.0.1:8000**. Three tabs:
+
+- **Watchlist** — add/remove tickers, click a row to expand its
+  per-timeframe breakdown, click a column header to sort, use Refresh to
+  re-pull data. Your watchlist is saved to `tickers.local.json`
+  (gitignored, per-user) and reloaded next time.
+- **Open Positions** — from a ticker's expanded detail view, "Log paper
+  trade" opens a form (direction, entry price pre-filled from the current
+  price, size, optional stop-loss/take-profit, and a required reasoning
+  note). Open trades here show live unrealized P&L; Close records the
+  current price as exit — manual only, mirroring a real demo account with
+  no partial exits.
+- **Journal** — closed trades with entry/exit/P&L/reasoning, sortable by
+  date or outcome, plus a stats summary (equity, total P&L, win rate,
+  average win/loss).
+
+Trade records live in `paper_trades.local.db` (SQLite, gitignored,
+per-user).
 
 Try the curated demo tickers to see each state: `XRPUSDT` / `HYPEUSD`
 (clean bullish alignment), `SOLUSDT` (clean bearish alignment), `ADAUSDT`
@@ -110,10 +133,16 @@ confluence/
 │   └── enrich.py            # attaches indicator columns to raw OHLCV
 ├── screening/
 │   └── analysis.py          # MA stack / RSI zone / structure / alignment logic
+├── paper/                # paper trading: virtual account + trade journal
+│   ├── db.py                # SQLite schema + connection (paper_trades.local.db)
+│   └── store.py               # open/close trades, journal queries, P&L/stats math
 ├── api/                  # FastAPI web app (primary interface)
 │   ├── app.py               # app factory, mounts static/ + routes
-│   ├── schemas.py            # dataclass -> JSON response models
-│   ├── routes/watchlist.py    # GET/POST/DELETE /api/watchlist, GET /api/meta
+│   ├── provider.py           # the one shared DataProvider instance (screener + paper trading)
+│   ├── schemas.py            # dataclass -> JSON response models (screener)
+│   ├── routes/
+│   │   ├── watchlist.py        # GET/POST/DELETE /api/watchlist, GET /api/meta
+│   │   └── paper.py             # /api/paper/trades (open/close/list), /api/paper/stats
 │   └── static/                # HTML/CSS/vanilla JS frontend, no build step
 ├── output/
 │   └── dashboard.py         # terminal table rendering (rich) — legacy
@@ -151,8 +180,10 @@ class DataProvider(ABC):
 `MockDataProvider` implements it today. A future `RealDataProvider`
 (likely wrapping the already-built `confluence/data/binance_client.py`)
 implements the same interface and swaps in at the one line in
-[`confluence/api/routes/watchlist.py`](confluence/api/routes/watchlist.py)
-that constructs the provider — no changes anywhere else.
+[`confluence/api/provider.py`](confluence/api/provider.py) that
+constructs the provider — no changes anywhere else. Both the screener and
+paper trading import that same shared instance, so they always agree on
+price.
 
 ### Mock data
 
@@ -179,6 +210,17 @@ Design principles:
 - **Partial failure isolation.** A bad ticker or a failed request for one
   symbol doesn't take down the rest of the screen; it's reported inline as
   an error row, in both the terminal dashboard and the web UI.
+- **P&L is derived, never a stored running balance.** Realized P&L is
+  computed once at close time from (entry, exit, size, direction) and
+  stored on that trade row; account equity is always `starting_balance +
+  sum(realized P&L of closed trades)`, computed fresh on every request —
+  never a mutable balance field that could drift out of sync. Unrealized
+  P&L for open trades is computed fresh from whatever price the
+  DataProvider returns, every time it's asked for.
+- **Closing a paper trade is deliberately manual and irreversible**,
+  mirroring a real demo account with no partial exits: there's no
+  "undo," and no automatic stop-loss/take-profit execution — those fields
+  are recorded for your own reference, not enforced by the system.
 
 ## Testing
 
@@ -186,7 +228,7 @@ Design principles:
 python -m pytest
 ```
 
-All 72 tests run against synthetic or mocked data — no network access
+All 100 tests run against synthetic or mocked data — no network access
 required. Coverage includes:
 
 - RSI validated against a hand-computed example (to catch smoothing/seeding
@@ -199,8 +241,17 @@ required. Coverage includes:
   trend direction, and correct exclusion of the still-forming candle
 - The FastAPI watchlist API (via `TestClient`): fetching, adding,
   removing tickers, and error isolation
+- Paper trading: open/close validation, P&L sign correctness for both
+  long and short, win/loss/breakeven classification, stats math (win
+  rate, avg win/loss) including the zero-closed-trades edge case, and the
+  full API flow (open → appears with live P&L → close → appears in
+  journal → stats reflect it) via `TestClient`
 - The web frontend's static assets, served correctly and scanned for
-  forbidden trading-action language
+  forbidden trading-action language — scoped so the screener's own
+  descriptive labels can never say "buy"/"sell"/"long"/"short"/etc, while
+  the paper trading journal (which legitimately needs "long"/"short"/
+  "entry"/"exit" to record the *user's own* decisions) isn't falsely
+  flagged for using that vocabulary
 - Binance client parsing and unclosed-candle handling, via mocked HTTP
   responses (legacy path)
 - The Tkinter UI's widget wiring, threaded fetch/queue handling, ticker
@@ -208,8 +259,14 @@ required. Coverage includes:
 
 The web UI itself was also verified by actually running the server and
 loading the page in a real (Playwright-driven) browser — clicking
-through sorting, row expansion, add/remove, and each alignment state —
-not just by the automated test suite above.
+through sorting, row expansion, add/remove, each alignment state, and the
+full paper trading flow (log a trade, watch it appear with live P&L,
+close it, confirm it lands in the journal with updated stats) — not just
+by the automated test suite above. That live pass caught two real bugs
+a test suite alone wouldn't have: a CSS `white-space: nowrap` inheritance
+issue that made most of the expanded detail view invisible, and a
+watchlist-persistence bug where saving an empty ticker list silently
+reverted to defaults.
 
 ## Known issues
 
@@ -229,8 +286,11 @@ daily candles to confirm.
 - [ ] `RealDataProvider` wrapping `binance_client.py`, wired into the web
       app in place of `MockDataProvider`
 - [ ] Live verification against TradingView once network access allows it
-- [ ] Wallet connection (MetaMask) and trade execution — explicit future
-      phase, not started
+- [ ] Wallet connection (MetaMask) and **real** trade execution — explicit
+      future phase, not started (paper trading above is practice for this,
+      not a step toward it)
+- [ ] Editable starting balance / reset-account control in the UI
+      (currently set via `PAPER_STARTING_BALANCE` in `config.py`)
 - [ ] Config file (JSON/YAML) for default timeframes/indicator settings
 - [ ] Packaged/distributable build
 
